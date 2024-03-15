@@ -129,3 +129,4 @@ dist
 .yarn/install-state.gz
 .pnp.*
 X509-cert-5618187502851416559.pem
+.history

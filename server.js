@@ -7,7 +7,7 @@ const mongoose = require('mongoose'); // Added for Mongoose
 const { MongoClient } = require('mongodb');
 const authRoutes = require("./routes/authRoutes");
 
-if (!process.env.MONGODB_URI || !process.env.SESSION_SECRET || !process.env.CREDENTIALS) {
+if (!process.env.MONGODB_URI || !process.env.SESSION_SECRET) {
   console.error("Error: config environment variables not set. Please create/edit .env configuration file.");
   process.exit(-1);
 }
@@ -28,16 +28,13 @@ let dbClient;
 // New MongoDB connection using MongoClient for sessions
 async function connectDB() {
   try {
-    dbClient = new MongoClient(uri, {
-      tlsCAFile: process.env.CREDENTIALS
-    });
+    dbClient = new MongoClient(uri);
 
     await dbClient.connect();
     console.log("Database connected successfully using MongoClient for sessions");
 
     // Connect to MongoDB using Mongoose
     await mongoose.connect(uri, {
-      tlsCAFile: process.env.CREDENTIALS,
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });

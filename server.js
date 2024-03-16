@@ -3,12 +3,17 @@ require("dotenv").config();
 const express = require("express");
 const session = require("express-session");
 const MongoStore = require('connect-mongo');
-const mongoose = require('mongoose'); // Added for Mongoose
-const { MongoClient } = require('mongodb');
+const mongoose = require('mongoose');
+const logger = require('./utils/logger');
 const authRoutes = require("./routes/authRoutes");
+const chatInterface = require("./chatInterface");
+const errorHandler = require("./middleware/errorHandler");
+const inputSanitization = require("./middleware/inputSanitization");
+const MongoClient = require('mongodb').MongoClient;
+const { isAuthenticated } = require('./middleware/authMiddleware');
 
 if (!process.env.MONGODB_URI || !process.env.SESSION_SECRET || !process.env.CREDENTIALS) {
-  console.error("Error: config environment variables not set. Please create/edit .env configuration file.");
+  logger.error("Error: config environment variables not set. Please create/edit .env configuration file.");
   process.exit(-1);
 }
 
@@ -19,89 +24,88 @@ const port = process.env.PORT || 3000;
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
+// Sanitize all incoming request data
+app.use(inputSanitization);
+
 // Setting the templating engine to EJS
 app.set("view engine", "ejs");
 
 const uri = process.env.MONGODB_URI;
 let dbClient;
 
-// New MongoDB connection using MongoClient for sessions
-async function connectDB() {
+(async () => {
   try {
-    dbClient = new MongoClient(uri, {
-      tlsCAFile: process.env.CREDENTIALS
-    });
-
+    // Initialize MongoDB Client
+    dbClient = new MongoClient(uri, { tlsCertificateKeyFile: process.env.CREDENTIALS });
     await dbClient.connect();
-    console.log("Database connected successfully using MongoClient for sessions");
+    logger.info("Database connected successfully using MongoClient for sessions");
 
-    // Connect to MongoDB using Mongoose
-    await mongoose.connect(uri, {
-      tlsCAFile: process.env.CREDENTIALS,
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-    console.log("Database connected successfully using Mongoose");
+    // Initialize Mongoose connection
+    await mongoose.connect(uri);
+    logger.info("Database connected successfully using Mongoose");
 
-    const sessionStore = MongoStore.create({
-      mongoUrl: uri,
-      collectionName: 'sessions',
-      clientPromise: Promise.resolve(dbClient) // Use the existing MongoClient connection
-    });
-
-    // Session configuration with connect-mongo using the new MongoClient connection
-    app.use(
-      session({
-        secret: process.env.SESSION_SECRET,
-        resave: false,
-        saveUninitialized: false,
-        store: sessionStore,
-        cookie: { maxAge: 30 * 24 * 60 * 60 * 1000 } // Session cookies now expire after 30 days
-      }),
-    );
   } catch (err) {
-    console.error(`Database connection error: ${err}`);
-    console.error(err.stack);
+    logger.error(`MongoClient connection error: ${err.message}`, err.stack);
     process.exit(1);
   }
-}
 
-// Make session data available in templates
-app.use((req, res, next) => {
-  res.locals.session = req.session;
-  next();
-});
-
-// Serve static files
-app.use(express.static("public"));
-
-// Authentication Routes
-app.use(authRoutes);
-
-// Root path response
-app.get("/", (req, res) => {
-  res.render("index");
-});
-
-// If no routes handled the request, it's a 404
-app.use((req, res, next) => {
-  res.status(404).send("Page not found.");
-});
-
-// Error handling
-app.use((err, req, res, next) => {
-  console.error(`Unhandled application error: ${err.message}`);
-  console.error(err.stack);
-  res.status(500).send("There was an error serving your request.");
-});
-
-app.listen(port, async () => {
-  console.log(`Server running at http://localhost:${port}`);
   try {
-    await connectDB();
-    console.log("Session database connection established after server start");
+    // Configure session store with connected MongoDB Client
+    const sessionStore = MongoStore.create({
+      client: dbClient,
+      collectionName: 'sessions'
+    });
+
+    // Session configuration with connect-mongo
+    app.use(session({
+      secret: process.env.SESSION_SECRET,
+      resave: false,
+      saveUninitialized: false,
+      store: sessionStore,
+      cookie: {
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: 'strict'
+      }
+    }));
   } catch (err) {
-    console.error("Failed to connect to MongoDB for sessions", err);
-    console.error(err.stack);
+    logger.error(`Session store configuration error: ${err.message}`, err.stack);
+    process.exit(1);
   }
-});
+
+  // Make session data available in templates
+  app.use((req, res, next) => {
+    res.locals.session = req.session;
+    next();
+  });
+
+  // Serve static files
+  app.use(express.static("public"));
+
+  // Authentication routes
+  app.use('/auth', authRoutes);
+
+  app.get("/chat", isAuthenticated, (req, res) => {
+    res.render("chat");
+  });
+  
+  chatInterface(app);
+
+  // Root path response
+  app.get("/", (req, res) => {
+    res.render("index");
+  });
+
+  // If no routes handled the request, it's a 404
+  app.use((req, res, next) => {
+    res.status(404).send("Page not found.");
+  });
+
+  // Centralized error handling
+  app.use(errorHandler);
+
+  app.listen(port, () => {
+    logger.info(`Server running at http://localhost:${port}`);
+  });
+})();

@@ -1,5 +1,7 @@
 # ChatBot_Prototype Application
 
+# Written by Pythagora and GPT-4
+
 ## Overview
 
 This document provides setup instructions, an architecture overview, and API documentation for the ChatBot_Prototype application. The application is designed to be a scalable, secure, and maintainable chatbot platform leveraging modern technologies including Node.js, MongoDB, Express, and various AI services.

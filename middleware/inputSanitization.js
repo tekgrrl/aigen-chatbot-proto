@@ -3,10 +3,10 @@ const createError = require('http-errors');
 // Function to sanitize input data
 function sanitizeInput(input) {
     if (typeof input === 'string') {
-        return input.replace(/<script.*?>.*?<\/script>/ig, '')
-                     .replace(/<[\/\!]*?[^<>]*?>/ig, '')
-                     .replace(/<style.*?>.*?<\/style>/ig, '')
-                     .replace(/<![\s\S]*?--[ \t\n\r]*>/ig, '');
+        return input.replace(/<script[^>]*>[\s\S]*?<\/script>/ig, '')
+                 .replace(/<[^>]*>/ig, '')
+                 .replace(/<style[^>]*>[\s\S]*?<\/style>/ig, '')
+                 .replace(/<!--[\s\S]*?-->/ig, '');
     }
     return input;
 }

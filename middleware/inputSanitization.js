@@ -3,10 +3,31 @@ const createError = require('http-errors');
 // Function to sanitize input data
 function sanitizeInput(input) {
     if (typeof input === 'string') {
-        return input.replace(/<script[^>]*>[\s\S]*?<\/script>/ig, '')
+        // Remove HTML tags and content within script and style tags
+        input = input.replace(/<script[^>]*>[\s\S]*?<\/script>/ig, '')
                  .replace(/<[^>]*>/ig, '')
                  .replace(/<style[^>]*>[\s\S]*?<\/style>/ig, '')
                  .replace(/<!--[\s\S]*?-->/ig, '');
+
+        // Address CWE-1333 by encoding special characters to prevent potential XSS attacks
+        input = input.replace(/&/g, '&amp;')
+                 .replace(/</g, '&lt;')
+                 .replace(/>/g, '&gt;')
+                 .replace(/"/g, '&quot;')
+                 .replace(/'/g, '&#x27;')
+                 .replace(/\//g, '&#x2F;');
+
+        // Address CWE-400 by limiting the length of the input to prevent potential DoS attacks
+        if (input.length > 1000) {
+            throw new Error('Input is too long');
+        }
+
+        // Address CWE-730 by checking if the input is a string type
+        if (typeof input !== 'string') {
+            throw new Error('Invalid input type');
+        }
+
+        return input;
     }
     return input;
 }
